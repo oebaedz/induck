@@ -54,8 +54,12 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 
     cachedAccessToken = credential.accessToken;
     return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error: unknown) {
+  } catch (error: any) {
     console.error('Google sign in error:', error);
+    if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('auth/unauthorized-domain')) {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'domain';
+      throw new Error(`auth/unauthorized-domain: Domain "${currentHost}" belum diizinkan di Firebase Authentication.`);
+    }
     throw error;
   } finally {
     isSigningIn = false;

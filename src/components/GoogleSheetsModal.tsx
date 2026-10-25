@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { SyncState, Student, PerkembanganSiswa, NilaiSemester, SelesaiStudiMutasi, SchoolProfile } from '../types';
 import { googleSignIn, logout } from '../services/googleAuth';
 import { createSchoolSpreadsheet, writeAllSheetsData, readAllSheetsData } from '../services/googleSheets';
-import { X, FileSpreadsheet, ExternalLink, RefreshCw, Plus, ArrowUpRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, FileSpreadsheet, ExternalLink, RefreshCw, Plus, ArrowUpRight, CheckCircle2, AlertCircle, Copy, Check } from 'lucide-react';
 
 interface GoogleSheetsModalProps {
   isOpen: boolean;
@@ -35,6 +35,10 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isUnauthorizedDomain = errorMessage?.includes('unauthorized-domain');
 
   if (!isOpen) return null;
 
@@ -260,10 +264,68 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         <div className="p-6 overflow-y-auto flex-1 space-y-6 text-xs text-slate-700">
           {/* Notifications */}
           {errorMessage && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{errorMessage}</span>
-            </div>
+            isUnauthorizedDomain ? (
+              <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 space-y-3 shadow-xs">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-bold text-xs text-amber-950">Domain Deployment Belum Diizinkan di Firebase (auth/unauthorized-domain)</h4>
+                    <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                      Firebase Authentication memblokir login Google dari domain baru (<strong>{currentHostname || 'Netlify'}</strong>) demi keamanan. Anda hanya perlu menambahkan domain ini satu kali ke daftar <strong>Authorized Domains</strong> di Firebase Console.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white p-3 rounded-lg border border-amber-200/80 space-y-2">
+                  <div className="text-[11px] font-semibold text-slate-800">Domain yang harus ditambahkan:</div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 p-2 bg-slate-100 font-mono text-xs rounded border border-slate-200 text-slate-900 select-all">
+                      {currentHostname || 'domain-anda.netlify.app'}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (currentHostname) {
+                          navigator.clipboard.writeText(currentHostname);
+                          setCopiedDomain(true);
+                          setTimeout(() => setCopiedDomain(false), 2000);
+                        }
+                      }}
+                      className="px-3 py-2 text-xs font-semibold text-amber-900 bg-amber-100 hover:bg-amber-200 rounded transition-colors flex items-center gap-1.5 shrink-0"
+                    >
+                      {copiedDomain ? <Check className="w-3.5 h-3.5 text-emerald-700" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedDomain ? 'Tersalin!' : 'Salin Domain'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1 text-[11px] text-amber-900 leading-relaxed pt-1">
+                  <div className="font-bold">Langkah cepat mengaktifkan:</div>
+                  <ol className="list-decimal list-inside space-y-1 pl-1 text-slate-700">
+                    <li>
+                      Buka{' '}
+                      <a
+                        href="https://console.firebase.google.com/project/gen-lang-client-0123836276/authentication/settings"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold underline text-amber-900 hover:text-amber-950 inline-flex items-center gap-0.5"
+                      >
+                        Firebase Console Settings
+                        <ExternalLink className="w-3 h-3 inline" />
+                      </a>
+                    </li>
+                    <li>Gulir ke bagian <strong>Authorized domains</strong> (Domain yang diotorisasi).</li>
+                    <li>Klik <strong>Add domain</strong>, tempel <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">{currentHostname || 'domain-anda.netlify.app'}</code>, lalu klik <strong>Add / Save</strong>.</li>
+                    <li>Kembali ke tab ini dan klik tombol <em>Sign in with Google</em> lagi.</li>
+                  </ol>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{errorMessage}</span>
+              </div>
+            )
           )}
 
           {successMessage && (
