@@ -1,0 +1,8 @@
+{
+  "name": "Buku Induk Siswa Digital",
+  "description": "Aplikasi buku induk sekolah digital terintegrasi untuk biodata siswa, perkembangan, kelulusan/mutasi, dan nilai rapor berbasis Google Sheets dengan fitur cetak dokumen resmi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
