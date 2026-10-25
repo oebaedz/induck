@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Student, NilaiSemester, SchoolProfile } from '../types';
-import { Printer, FileText, Award, UserCheck, ArrowRight } from 'lucide-react';
+import { Printer, FileText, Award, UserCheck, ArrowRight, Download } from 'lucide-react';
 
 interface PrintCenterViewProps {
   students: Student[];
@@ -91,8 +91,8 @@ export const PrintCenterView: React.FC<PrintCenterViewProps> = ({
             onClick={() => studentForBook && onOpenPrintMasterBook(studentForBook.id)}
             className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded-lg transition-colors shadow-xs flex items-center justify-center gap-2"
           >
-            <Printer className="w-4 h-4" />
-            <span>Buka & Cetak Lembar Buku Induk</span>
+            <Download className="w-4 h-4" />
+            <span>Buka Lembar Buku Induk & Unduh PDF / Cetak</span>
           </button>
         </div>
 
@@ -104,7 +104,7 @@ export const PrintCenterView: React.FC<PrintCenterViewProps> = ({
             </div>
 
             <div>
-              <h2 className="text-base font-bold text-slate-900">2. Cetak Laporan Nilai per Semester</h2>
+              <h2 className="text-base font-bold text-slate-900">2. Cetak & Unduh Nilai Rapor per Semester</h2>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                 Transkrip capaian kompetensi semester memuat nilai pengetahuan, keterampilan, predikat, KKM, ekstrakurikuler, presensi, catatan wali kelas, dan 3 kolom pengesahan resmi.
               </p>
@@ -166,8 +166,8 @@ export const PrintCenterView: React.FC<PrintCenterViewProps> = ({
             onClick={() => studentForGrades && onOpenPrintGrades(studentForGrades.id, selectedSemester)}
             className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-blue-800 hover:bg-blue-900 rounded-lg transition-colors shadow-xs flex items-center justify-center gap-2"
           >
-            <Printer className="w-4 h-4" />
-            <span>Buka & Cetak Nilai Rapor Semester {selectedSemester}</span>
+            <Download className="w-4 h-4" />
+            <span>Buka Lembar Rapor & Unduh PDF / Cetak (Semester {selectedSemester})</span>
           </button>
         </div>
       </div>

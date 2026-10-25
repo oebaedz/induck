@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { Student, PerkembanganSiswa, SelesaiStudiMutasi, SchoolProfile } from '../types';
-import { Printer, ArrowLeft, Download } from 'lucide-react';
+import { Printer, ArrowLeft, Download, Loader2, CheckCircle2 } from 'lucide-react';
+import { downloadElementAsPdf } from '../services/pdfExport';
 
 interface PrintMasterBookProps {
   student: Student;
@@ -17,8 +18,34 @@ export const PrintMasterBook: React.FC<PrintMasterBookProps> = ({
   school,
   onBack,
 }) => {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState<string>('');
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!sheetRef.current) return;
+    try {
+      setIsDownloadingPdf(true);
+      setDownloadSuccess(false);
+      const fileName = `Buku_Induk_${student.nisn || student.nis}_${student.namaLengkap}`;
+      await downloadElementAsPdf(sheetRef.current, {
+        fileName,
+        onProgress: (msg) => setPdfProgress(msg),
+      });
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 4000);
+    } catch (err: any) {
+      console.error('Gagal mengunduh PDF:', err);
+      alert('Gagal menghasilkan file PDF: ' + (err?.message || 'Terjadi kesalahan'));
+    } finally {
+      setIsDownloadingPdf(false);
+      setPdfProgress('');
+    }
   };
 
   const todayFormatted = new Intl.DateTimeFormat('id-ID', {
@@ -32,7 +59,7 @@ export const PrintMasterBook: React.FC<PrintMasterBookProps> = ({
   return (
     <div className="min-h-screen bg-slate-100 py-8 px-4 sm:px-6">
       {/* Floating Action Bar (Hidden on print) */}
-      <div className="max-w-4xl mx-auto mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-md flex items-center justify-between gap-4 no-print sticky top-4 z-50">
+      <div className="max-w-4xl mx-auto mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-md flex flex-wrap items-center justify-between gap-4 no-print sticky top-4 z-50">
         <button
           onClick={onBack}
           className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
@@ -41,23 +68,58 @@ export const PrintMasterBook: React.FC<PrintMasterBookProps> = ({
           <span>Kembali</span>
         </button>
 
-        <div className="text-xs text-slate-600 hidden sm:block">
+        <div className="text-xs text-slate-600 hidden md:block">
           Lembar Buku Induk: <span className="font-bold text-slate-900">{student.namaLengkap}</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
+          {/* Tombol Unduh File PDF Langsung */}
+          <button
+            onClick={handleDownloadPdf}
+            disabled={isDownloadingPdf}
+            className={`inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all shadow-xs ${
+              downloadSuccess
+                ? 'bg-emerald-600 text-white'
+                : 'bg-emerald-800 text-white hover:bg-emerald-900 disabled:bg-emerald-700/70'
+            }`}
+            title="Unduh dokumen langsung dalam format file PDF A4 resmi"
+          >
+            {isDownloadingPdf ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>{pdfProgress || 'Memproses PDF...'}</span>
+              </>
+            ) : downloadSuccess ? (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>PDF Berhasil Diunduh!</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                <span>Unduh File PDF</span>
+              </>
+            )}
+          </button>
+
+          {/* Tombol Cetak Fisik / Print Browser */}
           <button
             onClick={handlePrint}
-            className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-emerald-800 rounded-lg hover:bg-emerald-900 transition-colors shadow-sm"
+            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition-colors shadow-xs"
+            title="Buka dialog cetak browser (Ctrl+P)"
           >
-            <Printer className="w-4 h-4" />
-            <span>Cetak Dokumen Resmi / Simpan PDF</span>
+            <Printer className="w-4 h-4 text-slate-600" />
+            <span>Cetak (Printer)</span>
           </button>
         </div>
       </div>
 
       {/* Official Master Book Sheet (Formatted strictly for A4 print) */}
-      <div className="max-w-4xl mx-auto bg-white p-8 sm:p-12 border border-slate-300 shadow-lg print:shadow-none print:border-none print:p-0 print-sheet text-slate-900 text-xs leading-normal">
+      <div 
+        ref={sheetRef}
+        id="master-book-printable-sheet"
+        className="max-w-4xl mx-auto bg-white p-8 sm:p-12 border border-slate-300 shadow-lg print:shadow-none print:border-none print:p-0 print-sheet text-slate-900 text-xs leading-normal"
+      >
         {/* Kop Surat Resmi Sekolah */}
         <div className="border-b-4 border-double border-slate-900 pb-3 mb-6">
           <div className="flex items-center gap-4">

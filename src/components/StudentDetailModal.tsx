@@ -114,9 +114,10 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               <button
                 onClick={() => onPrintMasterBook(student.id)}
                 className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg transition-colors shadow-xs"
+                title="Buka lembar buku induk resmi untuk dicetak atau diunduh sebagai PDF"
               >
                 <Printer className="w-4 h-4" />
-                <span>Cetak Buku Induk</span>
+                <span>Cetak / Unduh PDF</span>
               </button>
               <button
                 onClick={() => onEdit(student)}

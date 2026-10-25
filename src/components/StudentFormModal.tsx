@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Student } from '../types';
-import { X, Save, UserPlus, Upload, Image, Trash2, Check } from 'lucide-react';
+import { X, Save, UserPlus, Upload, Image, Trash2, Check, Loader2 } from 'lucide-react';
+import { compressImageFile } from '../utils/imageCompressor';
 
 interface StudentFormModalProps {
   isOpen: boolean;
@@ -169,21 +170,30 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Handle local file uploads with resizing to prevent giant memory footprints
-  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'fotoMasukUrl' | 'fotoKeluarUrl') => {
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState<boolean>(false);
+
+  // Handle local file uploads with automatic resizing to 3x4 pas foto standards
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'fotoMasukUrl' | 'fotoKeluarUrl') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
+    try {
+      setIsCompressingPhoto(true);
+      // Automatically resize to 3x4 pas foto standard (360x480 max) and compress as JPEG
+      const compressedBase64 = await compressImageFile(file, 360, 480, 0.78);
       setFormData(prev => ({
         ...prev,
-        [field]: base64,
-        ...(field === 'fotoMasukUrl' ? { fotoUrl: base64 } : {}),
+        [field]: compressedBase64,
+        ...(field === 'fotoMasukUrl' ? { fotoUrl: compressedBase64 } : {}),
       }));
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error('Gagal mengompresi foto:', err);
+      alert('Gagal memproses gambar: ' + (err?.message || 'Format tidak didukung'));
+    } finally {
+      setIsCompressingPhoto(false);
+      // Reset input element so re-selecting the same file triggers change
+      e.target.value = '';
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {

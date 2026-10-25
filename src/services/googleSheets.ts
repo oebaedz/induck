@@ -33,7 +33,7 @@ export async function createSchoolSpreadsheet(
       {
         properties: {
           title: 'Data_Siswa',
-          gridProperties: { rowCount: 100, columnCount: 30, frozenRowCount: 1 },
+          gridProperties: { rowCount: 100, columnCount: 35, frozenRowCount: 1 },
         },
       },
       {
@@ -79,6 +79,25 @@ export async function createSchoolSpreadsheet(
 }
 
 /**
+ * Sanitizes any value to ensure it never breaches Google Sheets' strict
+ * 50,000 characters per cell limit.
+ */
+export function safeCellString(val: any, maxLen = 45000): string | number {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
+  const str = String(val);
+  if (str.length <= maxLen) return str;
+
+  // If this is a base64 image data URL exceeding safe cell limits, store a clean reference marker
+  if (str.startsWith('data:image/')) {
+    return '[Foto Siswa Base64 Tersimpan di Browser]';
+  }
+  // Otherwise truncate cleanly
+  return str.slice(0, maxLen - 3) + '...';
+}
+
+/**
  * Writes or updates all data sheets in the given spreadsheet
  */
 export async function writeAllSheetsData(
@@ -92,7 +111,7 @@ export async function writeAllSheetsData(
     'Tempat Lahir', 'Tanggal Lahir', 'Agama', 'Kewarganegaraan', 'Anak Ke', 'Jumlah Saudara', 
     'Status Anak', 'Bahasa', 'Kelas Sekarang', 'Status Siswa', 'Jalan', 'RT', 'RW', 
     'Kelurahan', 'Kecamatan', 'Kab/Kota', 'Provinsi', 'No HP Siswa', 'Nama Ayah', 
-    'Pekerjaan Ayah', 'Nama Ibu', 'Pekerjaan Ibu', 'Foto URL'
+    'Pekerjaan Ayah', 'Nama Ibu', 'Pekerjaan Ibu', 'Foto URL', 'Foto Masuk URL', 'Foto Keluar URL'
   ];
 
   const studentRows = payload.students.map(s => [
@@ -125,7 +144,9 @@ export async function writeAllSheetsData(
     s.orangTua.ayah.pekerjaan,
     s.orangTua.ibu.nama,
     s.orangTua.ibu.pekerjaan,
-    s.fotoUrl
+    s.fotoUrl,
+    s.fotoMasukUrl || s.fotoUrl || '',
+    s.fotoKeluarUrl || '',
   ]);
 
   // 2. Data Perkembangan Rows (flattened records)
@@ -212,22 +233,28 @@ export async function writeAllSheetsData(
     km.mutasi?.noSuratPindah || '-'
   ]);
 
+  // Sanitize all cell contents to strictly guarantee no cell exceeds 45,000 chars
+  const sanitizedStudentRows = studentRows.map(row => row.map(c => safeCellString(c)));
+  const sanitizedPerkembanganRows = perkembanganRows.map(row => row.map(c => safeCellString(c)));
+  const sanitizedNilaiRows = nilaiRows.map(row => row.map(c => safeCellString(c)));
+  const sanitizedKelulusanRows = kelulusanRows.map(row => row.map(c => safeCellString(c)));
+
   const valueRanges = [
     {
-      range: 'Data_Siswa!A1:AD',
-      values: [studentHeaders, ...studentRows],
+      range: 'Data_Siswa!A1:AF',
+      values: [studentHeaders, ...sanitizedStudentRows],
     },
     {
       range: 'Data_Perkembangan!A1:O',
-      values: [perkembanganHeaders, ...perkembanganRows],
+      values: [perkembanganHeaders, ...sanitizedPerkembanganRows],
     },
     {
       range: 'Data_Nilai!A1:N',
-      values: [nilaiHeaders, ...nilaiRows],
+      values: [nilaiHeaders, ...sanitizedNilaiRows],
     },
     {
       range: 'Data_Kelulusan_Mutasi!A1:J',
-      values: [kelulusanHeaders, ...kelulusanRows],
+      values: [kelulusanHeaders, ...sanitizedKelulusanRows],
     },
   ];
 
@@ -257,7 +284,7 @@ export async function readAllSheetsData(
   accessToken: string,
   spreadsheetId: string
 ): Promise<SheetImportResult> {
-  const ranges = ['Data_Siswa!A1:AD', 'Data_Perkembangan!A1:O', 'Data_Nilai!A1:N', 'Data_Kelulusan_Mutasi!A1:J'];
+  const ranges = ['Data_Siswa!A1:AF', 'Data_Perkembangan!A1:O', 'Data_Nilai!A1:N', 'Data_Kelulusan_Mutasi!A1:J'];
   const params = ranges.map(r => `ranges=${encodeURIComponent(r)}`).join('&');
   const url = `${SHEETS_BASE_URL}/${spreadsheetId}/values:batchGet?${params}`;
 
@@ -282,6 +309,10 @@ export async function readAllSheetsData(
     for (let i = 1; i < siswaData.length; i++) {
       const row = siswaData[i];
       if (!row || !row[0]) continue;
+      const rawFotoUrl = String(row[29] || '');
+      const rawFotoMasukUrl = String(row[30] || '');
+      const rawFotoKeluarUrl = String(row[31] || '');
+
       parsedStudents.push({
         id: String(row[0]),
         nis: String(row[1] || ''),
@@ -344,7 +375,9 @@ export async function readAllSheetsData(
           masukKelas: 'X-1',
           statusMasuk: 'Siswa Baru',
         },
-        fotoUrl: String(row[29] || ''),
+        fotoUrl: rawFotoUrl.startsWith('[Foto') ? '' : rawFotoUrl,
+        fotoMasukUrl: rawFotoMasukUrl.startsWith('[Foto') ? '' : rawFotoMasukUrl,
+        fotoKeluarUrl: rawFotoKeluarUrl.startsWith('[Foto') ? '' : rawFotoKeluarUrl,
       });
     }
   }
