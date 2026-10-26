@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Student } from '../types';
-import { X, Save, UserPlus, Upload, Image, Trash2, Check, Loader2 } from 'lucide-react';
+import { X, Save, UserPlus, Upload, Image, Trash2, Check, Loader2, Cloud } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
+import { isOnlineUrl } from '../services/googleDrive';
 
 interface StudentFormModalProps {
   isOpen: boolean;
@@ -85,6 +86,7 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
 
   const fileInputMasukRef = useRef<HTMLInputElement>(null);
   const fileInputKeluarRef = useRef<HTMLInputElement>(null);
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState<boolean>(false);
 
   useEffect(() => {
     if (studentToEdit) {
@@ -170,9 +172,7 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  const [isCompressingPhoto, setIsCompressingPhoto] = useState<boolean>(false);
-
-  // Handle local file uploads with automatic resizing to 3x4 pas foto standards
+  // Handle local file uploads with automatic resizing and cloud Google Drive sync
   const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'fotoMasukUrl' | 'fotoKeluarUrl') => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -181,10 +181,32 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
       setIsCompressingPhoto(true);
       // Automatically resize to 3x4 pas foto standard (360x480 max) and compress as JPEG
       const compressedBase64 = await compressImageFile(file, 360, 480, 0.78);
+      
+      let finalUrl = compressedBase64;
+      // If Google token is active, directly store online to Google Drive
+      try {
+        const { getAccessToken } = await import('../services/googleAuth');
+        const token = await getAccessToken();
+        if (token) {
+          const { uploadPhotoToGoogleDrive, getOrCreateDriveFolder } = await import('../services/googleDrive');
+          const folderId = await getOrCreateDriveFolder(token);
+          const studentTag = formData.nisn || formData.nis || formData.id || 'siswa';
+          const { directUrl } = await uploadPhotoToGoogleDrive(
+            token,
+            compressedBase64,
+            `${field}_${studentTag}_${Date.now()}`,
+            folderId
+          );
+          finalUrl = directUrl;
+        }
+      } catch (cloudErr) {
+        console.warn('Google Drive direct upload skipped, retaining local compressed copy:', cloudErr);
+      }
+
       setFormData(prev => ({
         ...prev,
-        [field]: compressedBase64,
-        ...(field === 'fotoMasukUrl' ? { fotoUrl: compressedBase64 } : {}),
+        [field]: finalUrl,
+        ...(field === 'fotoMasukUrl' ? { fotoUrl: finalUrl } : {}),
       }));
     } catch (err: any) {
       console.error('Gagal mengompresi foto:', err);
@@ -306,6 +328,21 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
                     </div>
 
                     {formData.fotoMasukUrl && (
+                      <div className="pt-0.5">
+                        {isOnlineUrl(formData.fotoMasukUrl) ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/60 font-medium">
+                            <Cloud className="w-3 h-3 text-emerald-600" />
+                            Tersimpan Online (Google Drive)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 font-medium">
+                            Tersimpan Lokal (Diunggah ke Drive saat sync)
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {formData.fotoMasukUrl && (
                       <button
                         type="button"
                         onClick={() => setFormData({ ...formData, fotoMasukUrl: '' })}
@@ -376,6 +413,21 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
                         <option value="/src/assets/images/student_grad_female_1792829508677.jpg">Siswi Berhijab (Blazer Formal Kelulusan)</option>
                       </select>
                     </div>
+
+                    {formData.fotoKeluarUrl && (
+                      <div className="pt-0.5">
+                        {isOnlineUrl(formData.fotoKeluarUrl) ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/60 font-medium">
+                            <Cloud className="w-3 h-3 text-emerald-600" />
+                            Tersimpan Online (Google Drive)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 font-medium">
+                            Tersimpan Lokal (Diunggah ke Drive saat sync)
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {formData.fotoKeluarUrl && (
                       <button

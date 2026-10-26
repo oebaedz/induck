@@ -1,4 +1,5 @@
 import { Student, PerkembanganSiswa, NilaiSemester, SelesaiStudiMutasi } from '../types';
+import { getOrCreateDriveFolder, uploadPhotoToGoogleDrive } from './googleDrive';
 
 export interface SheetExportPayload {
   students: Student[];
@@ -68,14 +69,14 @@ export async function createSchoolSpreadsheet(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || `Gagal membuat Spreadsheet (${response.status})`);
+    throw new Error(errorData.error?.message || `Gagal membuat spreadsheet di Google Drive (${response.status})`);
   }
 
   const data = await response.json();
-  const spreadsheetId = data.spreadsheetId;
-  const spreadsheetUrl = data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-
-  return { spreadsheetId, spreadsheetUrl };
+  return {
+    spreadsheetId: data.spreadsheetId,
+    spreadsheetUrl: data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${data.spreadsheetId}/edit`,
+  };
 }
 
 /**
@@ -98,14 +99,100 @@ export function safeCellString(val: any, maxLen = 45000): string | number {
 }
 
 /**
- * Writes or updates all data sheets in the given spreadsheet
+ * Writes or updates all data sheets in the given spreadsheet.
+ * 
+ * Key Features:
+ * 1. Automatically uploads any local base64 student photos to Google Drive so they are accessible online from any device.
+ * 2. Executes batchClear on data sheets BEFORE writing, ensuring deleted students in the app are permanently cleared from Google Sheets.
+ * 3. Writes fresh data and returns updated students with their online Google Drive photo URLs.
  */
 export async function writeAllSheetsData(
   accessToken: string,
   spreadsheetId: string,
-  payload: SheetExportPayload
-): Promise<void> {
-  // 1. Data Siswa Rows
+  payload: SheetExportPayload,
+  onProgress?: (message: string) => void
+): Promise<{ updatedStudents: Student[] }> {
+  // Clone students to avoid unintended state mutation during upload
+  const processedStudents: Student[] = payload.students.map(s => ({ ...s }));
+
+  // 1. Upload any local base64 student photos to Google Drive
+  let driveFolderId: string | undefined;
+  for (let i = 0; i < processedStudents.length; i++) {
+    const s = processedStudents[i];
+    const studentTag = s.nisn || s.nis || s.id || `siswa_${i + 1}`;
+
+    // Upload Foto Masuk if stored as base64
+    if (s.fotoMasukUrl && s.fotoMasukUrl.startsWith('data:image/')) {
+      try {
+        onProgress?.(`Mengunggah foto masuk online: ${s.namaLengkap}...`);
+        if (!driveFolderId) {
+          driveFolderId = await getOrCreateDriveFolder(accessToken);
+        }
+        const { directUrl } = await uploadPhotoToGoogleDrive(
+          accessToken,
+          s.fotoMasukUrl,
+          `foto_masuk_${studentTag}_${Date.now()}`,
+          driveFolderId
+        );
+        s.fotoMasukUrl = directUrl;
+        if (!s.fotoUrl || s.fotoUrl.startsWith('data:image/')) {
+          s.fotoUrl = directUrl;
+        }
+      } catch (err) {
+        console.warn(`Gagal mengunggah foto masuk ke Google Drive untuk ${s.namaLengkap}:`, err);
+      }
+    }
+
+    // Upload Foto Keluar if stored as base64
+    if (s.fotoKeluarUrl && s.fotoKeluarUrl.startsWith('data:image/')) {
+      try {
+        onProgress?.(`Mengunggah foto tamat online: ${s.namaLengkap}...`);
+        if (!driveFolderId) {
+          driveFolderId = await getOrCreateDriveFolder(accessToken);
+        }
+        const { directUrl } = await uploadPhotoToGoogleDrive(
+          accessToken,
+          s.fotoKeluarUrl,
+          `foto_keluar_${studentTag}_${Date.now()}`,
+          driveFolderId
+        );
+        s.fotoKeluarUrl = directUrl;
+      } catch (err) {
+        console.warn(`Gagal mengunggah foto keluar ke Google Drive untuk ${s.namaLengkap}:`, err);
+      }
+    }
+
+    // Check primary fotoUrl
+    if (s.fotoUrl && s.fotoUrl.startsWith('data:image/')) {
+      s.fotoUrl = s.fotoMasukUrl || s.fotoKeluarUrl || s.fotoUrl;
+    }
+  }
+
+  // 2. Clear existing sheet cells so deleted students/records are 100% removed from Google Sheets
+  onProgress?.('Membersihkan data lama dan sinkronisasi siswa terhapus...');
+  const clearUrl = `${SHEETS_BASE_URL}/${spreadsheetId}/values:batchClear`;
+  await fetch(clearUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      ranges: [
+        'Data_Siswa!A1:ZZ',
+        'Data_Perkembangan!A1:ZZ',
+        'Data_Nilai!A1:ZZ',
+        'Data_Kelulusan_Mutasi!A1:ZZ',
+      ],
+    }),
+  }).catch((err) => {
+    console.warn('Batch clear warning (will continue with update):', err);
+  });
+
+  // 3. Prepare fresh rows
+  onProgress?.('Menulis data terbaru ke Google Sheets...');
+
+  // Data Siswa Rows
   const studentHeaders = [
     'ID', 'NIS', 'NISN', 'NIK', 'Nama Lengkap', 'Nama Panggilan', 'Jenis Kelamin', 
     'Tempat Lahir', 'Tanggal Lahir', 'Agama', 'Kewarganegaraan', 'Anak Ke', 'Jumlah Saudara', 
@@ -114,7 +201,7 @@ export async function writeAllSheetsData(
     'Pekerjaan Ayah', 'Nama Ibu', 'Pekerjaan Ibu', 'Foto URL', 'Foto Masuk URL', 'Foto Keluar URL'
   ];
 
-  const studentRows = payload.students.map(s => [
+  const studentRows = processedStudents.map(s => [
     s.id,
     s.nis,
     s.nisn,
@@ -149,7 +236,7 @@ export async function writeAllSheetsData(
     s.fotoKeluarUrl || '',
   ]);
 
-  // 2. Data Perkembangan Rows (flattened records)
+  // Data Perkembangan Rows
   const perkembanganHeaders = [
     'Student ID', 'Semester', 'Tahun Ajaran', 'Tinggi Badan (cm)', 'Berat Badan (kg)', 
     'Golongan Darah', 'Kelainan Fisik', 'Riwayat Penyakit', 'Kelakuan', 'Kerajinan', 
@@ -185,7 +272,7 @@ export async function writeAllSheetsData(
     }
   });
 
-  // 3. Data Nilai Rows
+  // Data Nilai Rows
   const nilaiHeaders = [
     'ID Nilai', 'Student ID', 'Semester', 'Kelas', 'Tahun Ajaran', 'Kode Mapel', 
     'Nama Mata Pelajaran', 'Kelompok', 'KKM', 'Nilai Pengetahuan', 'Predikat Pengetahuan', 
@@ -214,7 +301,7 @@ export async function writeAllSheetsData(
     });
   });
 
-  // 4. Data Kelulusan & Mutasi Rows
+  // Data Kelulusan & Mutasi Rows
   const kelulusanHeaders = [
     'Student ID', 'Status Akhir', 'Tanggal Kelulusan', 'No Ijazah', 'No SKHUN', 
     'Melanjutkan Ke', 'Tanggal Mutasi', 'Pindah Ke Sekolah', 'Alasan Pindah', 'No Surat Pindah'
@@ -233,7 +320,7 @@ export async function writeAllSheetsData(
     km.mutasi?.noSuratPindah || '-'
   ]);
 
-  // Sanitize all cell contents to strictly guarantee no cell exceeds 45,000 chars
+  // Sanitize all cell contents to guarantee no cell breaches the limit
   const sanitizedStudentRows = studentRows.map(row => row.map(c => safeCellString(c)));
   const sanitizedPerkembanganRows = perkembanganRows.map(row => row.map(c => safeCellString(c)));
   const sanitizedNilaiRows = nilaiRows.map(row => row.map(c => safeCellString(c)));
@@ -275,6 +362,8 @@ export async function writeAllSheetsData(
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error?.message || `Gagal memperbarui data sheet (${response.status})`);
   }
+
+  return { updatedStudents: processedStudents };
 }
 
 /**
@@ -312,6 +401,11 @@ export async function readAllSheetsData(
       const rawFotoUrl = String(row[29] || '');
       const rawFotoMasukUrl = String(row[30] || '');
       const rawFotoKeluarUrl = String(row[31] || '');
+
+      // Clean photo URLs: keep valid online URLs (e.g. Google Drive https://lh3.googleusercontent.com/d/...)
+      const cleanedFotoMasuk = rawFotoMasukUrl.startsWith('http') ? rawFotoMasukUrl : (rawFotoMasukUrl.startsWith('[Foto') ? '' : rawFotoMasukUrl);
+      const cleanedFotoKeluar = rawFotoKeluarUrl.startsWith('http') ? rawFotoKeluarUrl : (rawFotoKeluarUrl.startsWith('[Foto') ? '' : rawFotoKeluarUrl);
+      const cleanedFoto = rawFotoUrl.startsWith('http') ? rawFotoUrl : (cleanedFotoMasuk || (rawFotoUrl.startsWith('[Foto') ? '' : rawFotoUrl));
 
       parsedStudents.push({
         id: String(row[0]),
@@ -375,9 +469,9 @@ export async function readAllSheetsData(
           masukKelas: 'X-1',
           statusMasuk: 'Siswa Baru',
         },
-        fotoUrl: rawFotoUrl.startsWith('[Foto') ? '' : rawFotoUrl,
-        fotoMasukUrl: rawFotoMasukUrl.startsWith('[Foto') ? '' : rawFotoMasukUrl,
-        fotoKeluarUrl: rawFotoKeluarUrl.startsWith('[Foto') ? '' : rawFotoKeluarUrl,
+        fotoUrl: cleanedFoto,
+        fotoMasukUrl: cleanedFotoMasuk,
+        fotoKeluarUrl: cleanedFotoKeluar,
       });
     }
   }

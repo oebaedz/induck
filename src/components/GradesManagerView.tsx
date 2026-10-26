@@ -203,8 +203,8 @@ export const GradesManagerView: React.FC<GradesManagerViewProps> = ({
               onChange={(e) => setCurrentStudentId(e.target.value)}
               className="w-full p-2.5 text-xs border border-slate-200 rounded-lg bg-white font-medium focus:ring-1 focus:ring-emerald-800 focus:outline-none"
             >
-              {students.map(s => (
-                <option key={s.id} value={s.id}>
+              {students.map((s, idx) => (
+                <option key={`${s.id}-${idx}`} value={s.id}>
                   {s.namaLengkap} ({s.kelasSekarang}) - NISN: {s.nisn}
                 </option>
               ))}

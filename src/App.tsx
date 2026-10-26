@@ -34,6 +34,19 @@ import { SchoolSettingsModal } from './components/SchoolSettingsModal';
 import { ConfirmationModal } from './components/ConfirmationModal';
 import { StudentUploadModal } from './components/StudentUploadModal';
 
+function deduplicateStudents(studentList: Student[]): Student[] {
+  const seenIds = new Set<string>();
+  return studentList.map((s, idx) => {
+    if (!s.id || seenIds.has(s.id)) {
+      const uniqueId = s.id ? `${s.id}-dup-${idx}-${Date.now().toString().slice(-4)}` : `std-${Date.now()}-${idx}`;
+      seenIds.add(uniqueId);
+      return { ...s, id: uniqueId };
+    }
+    seenIds.add(s.id);
+    return s;
+  });
+}
+
 export default function App() {
   // Primary datasets
   const [school, setSchool] = useState<SchoolProfile>(() => {
@@ -43,7 +56,17 @@ export default function App() {
 
   const [students, setStudents] = useState<Student[]>(() => {
     const saved = localStorage.getItem('buku_induk_students');
-    return saved ? JSON.parse(saved) : INITIAL_STUDENTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return deduplicateStudents(parsed);
+        }
+      } catch (e) {
+        console.error('Error loading saved students:', e);
+      }
+    }
+    return INITIAL_STUDENTS;
   });
 
   const [perkembangan, setPerkembangan] = useState<PerkembanganSiswa[]>(() => {
@@ -237,12 +260,40 @@ export default function App() {
       title: 'Hapus Siswa dari Buku Induk?',
       message: `Apakah Anda yakin ingin menghapus arsip siswa "${student.namaLengkap}" (NISN: ${student.nisn})? Seluruh data nilai, rekam perkembangan, dan riwayat studi terkait akan ikut dihapus.`,
       isDestructive: true,
-      onConfirm: () => {
-        setStudents(prev => prev.filter(s => s.id !== student.id));
-        setPerkembangan(prev => prev.filter(p => p.studentId !== student.id));
-        setNilaiList(prev => prev.filter(n => n.studentId !== student.id));
-        setKelulusanMutasi(prev => prev.filter(k => k.studentId !== student.id));
+      onConfirm: async () => {
+        const remainingStudents = students.filter(s => s.id !== student.id);
+        const remainingPerkembangan = perkembangan.filter(p => p.studentId !== student.id);
+        const remainingNilai = nilaiList.filter(n => n.studentId !== student.id);
+        const remainingKelulusan = kelulusanMutasi.filter(k => k.studentId !== student.id);
+
+        setStudents(remainingStudents);
+        setPerkembangan(remainingPerkembangan);
+        setNilaiList(remainingNilai);
+        setKelulusanMutasi(remainingKelulusan);
         setConfirmConfig(c => ({ ...c, isOpen: false }));
+
+        // Auto-sync deletion to Google Sheets if connected
+        if (syncState.isConnected && syncState.spreadsheetId) {
+          try {
+            const { getAccessToken } = await import('./services/googleAuth');
+            const token = await getAccessToken();
+            if (token) {
+              const { writeAllSheetsData } = await import('./services/googleSheets');
+              await writeAllSheetsData(token, syncState.spreadsheetId, {
+                students: remainingStudents,
+                perkembangan: remainingPerkembangan,
+                nilaiList: remainingNilai,
+                kelulusanMutasi: remainingKelulusan,
+              });
+              setSyncState(s => ({
+                ...s,
+                lastSyncedAt: new Date().toLocaleTimeString('id-ID'),
+              }));
+            }
+          } catch (syncErr) {
+            console.error('Gagal menyinkronkan penghapusan siswa ke Google Sheets:', syncErr);
+          }
+        }
       },
     });
   };
@@ -286,11 +337,11 @@ export default function App() {
     }));
 
     if (mode === 'replace') {
-      setStudents(newStudents);
+      setStudents(deduplicateStudents(newStudents));
       setPerkembangan(newPerkembangan);
       setKelulusanMutasi(newKelulusan);
     } else {
-      setStudents(prev => [...newStudents, ...prev]);
+      setStudents(prev => deduplicateStudents([...newStudents, ...prev]));
       setPerkembangan(prev => [...newPerkembangan, ...prev]);
       setKelulusanMutasi(prev => [...newKelulusan, ...prev]);
     }
@@ -522,7 +573,7 @@ export default function App() {
         onClose={() => setIsSheetsModalOpen(false)}
         onUpdateSyncState={(partial) => setSyncState(prev => ({ ...prev, ...partial }))}
         onImportData={(imported) => {
-          if (imported.students?.length) setStudents(imported.students);
+          if (imported.students?.length) setStudents(deduplicateStudents(imported.students));
           if (imported.perkembangan?.length) setPerkembangan(imported.perkembangan);
           if (imported.nilaiList?.length) setNilaiList(imported.nilaiList);
           if (imported.kelulusanMutasi?.length) setKelulusanMutasi(imported.kelulusanMutasi);

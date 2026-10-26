@@ -59,8 +59,8 @@ export const PrintCenterView: React.FC<PrintCenterViewProps> = ({
                 onChange={(e) => setSelectedStudentForBook(e.target.value)}
                 className="w-full p-2.5 text-xs border border-slate-200 rounded-lg bg-slate-50/50 focus:bg-white font-medium"
               >
-                {students.map(s => (
-                  <option key={s.id} value={s.id}>
+                {students.map((s, idx) => (
+                  <option key={`${s.id}-${idx}`} value={s.id}>
                     {s.namaLengkap} - Kelas {s.kelasSekarang} (NISN: {s.nisn})
                   </option>
                 ))}
@@ -119,8 +119,8 @@ export const PrintCenterView: React.FC<PrintCenterViewProps> = ({
                     onChange={(e) => setSelectedStudentForGrades(e.target.value)}
                     className="w-full p-2.5 text-xs border border-slate-200 rounded-lg bg-slate-50/50 focus:bg-white font-medium"
                   >
-                    {students.map(s => (
-                      <option key={s.id} value={s.id}>
+                    {students.map((s, idx) => (
+                      <option key={`${s.id}-${idx}`} value={s.id}>
                         {s.namaLengkap} ({s.kelasSekarang})
                       </option>
                     ))}
@@ -176,8 +176,8 @@ export const PrintCenterView: React.FC<PrintCenterViewProps> = ({
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
         <h2 className="text-sm font-bold text-slate-900">Aksi Cetak Cepat Seluruh Siswa</h2>
         <div className="divide-y divide-slate-100">
-          {students.map(s => (
-            <div key={s.id} className="py-3 flex items-center justify-between gap-4">
+          {students.map((s, idx) => (
+            <div key={`${s.id}-${idx}`} className="py-3 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-md overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
                   <img

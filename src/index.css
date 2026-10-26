@@ -52,10 +52,24 @@
 
   .print-sheet {
     box-shadow: none !important;
-    border-color: #cbd5e1 !important;
+    border: none !important;
     max-width: 100% !important;
     width: 100% !important;
+  }
+
+  .pdf-page {
     page-break-after: always;
+    break-after: page;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+
+  .pdf-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
   }
 
   .page-break {

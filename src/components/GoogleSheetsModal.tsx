@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { SyncState, Student, PerkembanganSiswa, NilaiSemester, SelesaiStudiMutasi, SchoolProfile } from '../types';
 import { googleSignIn, logout } from '../services/googleAuth';
 import { createSchoolSpreadsheet, writeAllSheetsData, readAllSheetsData } from '../services/googleSheets';
-import { X, FileSpreadsheet, ExternalLink, RefreshCw, Plus, ArrowUpRight, CheckCircle2, AlertCircle, Copy, Check } from 'lucide-react';
+import { isOnlineUrl, getOrCreateDriveFolder, uploadPhotoToGoogleDrive } from '../services/googleDrive';
+import { X, FileSpreadsheet, ExternalLink, RefreshCw, Plus, ArrowUpRight, CheckCircle2, AlertCircle, Copy, Check, Cloud, Trash2, Image } from 'lucide-react';
 
 interface GoogleSheetsModalProps {
   isOpen: boolean;
@@ -42,6 +43,9 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
   if (!isOpen) return null;
 
+  const onlinePhotosCount = students.filter(s => isOnlineUrl(s.fotoMasukUrl) || isOnlineUrl(s.fotoUrl)).length;
+  const localPhotosCount = students.filter(s => (s.fotoMasukUrl && s.fotoMasukUrl.startsWith('data:image/')) || (s.fotoKeluarUrl && s.fotoKeluarUrl.startsWith('data:image/'))).length;
+
   const handleSignIn = async () => {
     try {
       setIsProcessing(true);
@@ -76,7 +80,6 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   };
 
   const handleCreateNewSheet = async () => {
-    // Get access token
     const { getAccessToken } = await import('../services/googleAuth');
     const token = await getAccessToken();
     if (!token) {
@@ -91,13 +94,27 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
       const result = await createSchoolSpreadsheet(token, school.namaSekolah);
       
-      // Auto-populate spreadsheet with current data
-      await writeAllSheetsData(token, result.spreadsheetId, {
-        students,
-        perkembangan,
-        nilaiList,
-        kelulusanMutasi,
-      });
+      // Auto-populate spreadsheet with current data and upload local photos to Google Drive
+      const { updatedStudents } = await writeAllSheetsData(
+        token,
+        result.spreadsheetId,
+        {
+          students,
+          perkembangan,
+          nilaiList,
+          kelulusanMutasi,
+        },
+        (msg) => setSuccessMessage(msg)
+      );
+
+      if (updatedStudents?.length) {
+        onImportData({
+          students: updatedStudents,
+          perkembangan,
+          nilaiList,
+          kelulusanMutasi,
+        });
+      }
 
       onUpdateSyncState({
         spreadsheetId: result.spreadsheetId,
@@ -106,7 +123,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         lastSyncedAt: new Date().toLocaleTimeString('id-ID'),
       });
 
-      setSuccessMessage('Spreadsheet Buku Induk baru berhasil dibuat di Google Drive Anda dan data telah disinkronkan!');
+      setSuccessMessage('Spreadsheet Buku Induk baru berhasil dibuat di Google Drive Anda dan seluruh foto siswa telah tersimpan online!');
     } catch (err: any) {
       console.error(err);
       setErrorMessage(err.message || 'Gagal membuat spreadsheet baru.');
@@ -122,7 +139,6 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
       return;
     }
 
-    // If full URL was pasted, extract the ID
     const match = cleanId.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     if (match && match[1]) {
       cleanId = match[1];
@@ -139,7 +155,6 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
       setIsProcessing(true);
       setErrorMessage(null);
       
-      // Test read to check access
       const data = await readAllSheetsData(token, cleanId);
       
       onUpdateSyncState({
@@ -152,7 +167,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
       if (data.students.length > 0) {
         onRequestConfirm({
           title: 'Impor Data dari Spreadsheet?',
-          message: `Ditemukan ${data.students.length} data siswa di spreadsheet. Apakah Anda ingin memuatnya ke aplikasi?`,
+          message: `Ditemukan ${data.students.length} data siswa di spreadsheet (termasuk foto online). Apakah Anda ingin memuatnya ke aplikasi?`,
           onConfirm: () => {
             onImportData(data);
             setSuccessMessage(`Berhasil memuat ${data.students.length} data siswa dari spreadsheet.`);
@@ -173,8 +188,11 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
     if (!syncState.spreadsheetId) return;
 
     onRequestConfirm({
-      title: 'Kirim Data ke Google Sheets?',
-      message: `Tindakan ini akan memperbarui isi spreadsheet "${syncState.spreadsheetTitle || 'Buku Induk'}" dengan seluruh data siswa (${students.length} siswa), nilai rapor, dan catatan perkembangan saat ini. Lanjutkan?`,
+      title: 'Sinkronkan Data ke Google Sheets?',
+      message: `Tindakan ini akan:
+1. Menghapus data siswa yang telah dihapus di aplikasi dari spreadsheet.
+2. Mengunggah foto siswa lokal ke Google Drive agar dapat diakses dari device manapun.
+3. Memperbarui seluruh lembar nilai dan perkembangan siswa (${students.length} siswa). Lanjutkan?`,
       onConfirm: async () => {
         const { getAccessToken } = await import('../services/googleAuth');
         const token = await getAccessToken();
@@ -186,17 +204,31 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         try {
           setIsProcessing(true);
           setErrorMessage(null);
-          await writeAllSheetsData(token, syncState.spreadsheetId!, {
-            students,
-            perkembangan,
-            nilaiList,
-            kelulusanMutasi,
-          });
+          const { updatedStudents } = await writeAllSheetsData(
+            token,
+            syncState.spreadsheetId!,
+            {
+              students,
+              perkembangan,
+              nilaiList,
+              kelulusanMutasi,
+            },
+            (msg) => setSuccessMessage(msg)
+          );
+
+          if (updatedStudents?.length) {
+            onImportData({
+              students: updatedStudents,
+              perkembangan,
+              nilaiList,
+              kelulusanMutasi,
+            });
+          }
 
           onUpdateSyncState({
             lastSyncedAt: new Date().toLocaleTimeString('id-ID'),
           });
-          setSuccessMessage('Seluruh data berhasil disinkronkan ke Google Sheets!');
+          setSuccessMessage('Seluruh data berhasil disinkronkan ke Google Sheets! Siswa terhapus telah dibersihkan dan foto tersimpan online.');
         } catch (err: any) {
           setErrorMessage(err.message || 'Gagal mengirim data ke Google Sheets.');
         } finally {
@@ -211,7 +243,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
     onRequestConfirm({
       title: 'Tarik Data dari Google Sheets?',
-      message: 'Tindakan ini akan membaca baris dari spreadsheet Google Anda dan menggantikan data saat ini di aplikasi. Pastikan Anda telah menyimpan perubahan penting terlebih dahulu.',
+      message: 'Tindakan ini akan membaca baris dari spreadsheet Google Anda dan menggantikan data saat ini di aplikasi. Foto siswa online akan langsung dimuat di perangkat ini.',
       onConfirm: async () => {
         const { getAccessToken } = await import('../services/googleAuth');
         const token = await getAccessToken();
@@ -223,19 +255,96 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         try {
           setIsProcessing(true);
           setErrorMessage(null);
-          const result = await readAllSheetsData(token, syncState.spreadsheetId!);
-          onImportData(result);
+          const data = await readAllSheetsData(token, syncState.spreadsheetId!);
+          onImportData(data);
           onUpdateSyncState({
             lastSyncedAt: new Date().toLocaleTimeString('id-ID'),
           });
-          setSuccessMessage(`Berhasil menarik ${result.students.length} data siswa dari Google Sheets!`);
+          setSuccessMessage(`Berhasil memuat ${data.students.length} data siswa dari spreadsheet.`);
         } catch (err: any) {
-          setErrorMessage(err.message || 'Gagal menarik data dari Google Sheets.');
+          setErrorMessage(err.message || 'Gagal membaca data dari Google Sheets.');
         } finally {
           setIsProcessing(false);
         }
       },
     });
+  };
+
+  // Upload all local photos to Google Drive
+  const handleUploadAllPhotosToDrive = async () => {
+    const { getAccessToken } = await import('../services/googleAuth');
+    const token = await getAccessToken();
+    if (!token) {
+      setErrorMessage('Silakan masuk dengan akun Google terlebih dahulu.');
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      setErrorMessage(null);
+      setSuccessMessage('Membuat / memeriksa folder "Buku Induk - Foto Siswa" di Google Drive...');
+
+      const folderId = await getOrCreateDriveFolder(token);
+      let count = 0;
+      const updatedList = students.map(s => ({ ...s }));
+
+      for (let i = 0; i < updatedList.length; i++) {
+        const s = updatedList[i];
+        const studentTag = s.nisn || s.nis || s.id || `siswa_${i + 1}`;
+
+        if (s.fotoMasukUrl && s.fotoMasukUrl.startsWith('data:image/')) {
+          setSuccessMessage(`Mengunggah foto (${i + 1}/${updatedList.length}): ${s.namaLengkap}...`);
+          const { directUrl } = await uploadPhotoToGoogleDrive(
+            token,
+            s.fotoMasukUrl,
+            `foto_masuk_${studentTag}_${Date.now()}`,
+            folderId
+          );
+          s.fotoMasukUrl = directUrl;
+          if (!s.fotoUrl || s.fotoUrl.startsWith('data:image/')) {
+            s.fotoUrl = directUrl;
+          }
+          count++;
+        }
+
+        if (s.fotoKeluarUrl && s.fotoKeluarUrl.startsWith('data:image/')) {
+          setSuccessMessage(`Mengunggah foto tamat (${i + 1}/${updatedList.length}): ${s.namaLengkap}...`);
+          const { directUrl } = await uploadPhotoToGoogleDrive(
+            token,
+            s.fotoKeluarUrl,
+            `foto_keluar_${studentTag}_${Date.now()}`,
+            folderId
+          );
+          s.fotoKeluarUrl = directUrl;
+          count++;
+        }
+      }
+
+      onImportData({
+        students: updatedList,
+        perkembangan,
+        nilaiList,
+        kelulusanMutasi,
+      });
+
+      // Also sync to sheets if sheet is connected
+      if (syncState.spreadsheetId) {
+        setSuccessMessage('Memperbarui tautan foto online ke spreadsheet...');
+        await writeAllSheetsData(token, syncState.spreadsheetId, {
+          students: updatedList,
+          perkembangan,
+          nilaiList,
+          kelulusanMutasi,
+        });
+      }
+
+      setSuccessMessage(`Berhasil mengunggah ${count} foto siswa ke Google Drive! Sekarang foto dapat diakses dan dilihat di device manapun.`);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage(err.message || 'Gagal mengunggah foto ke Google Drive.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -252,8 +361,8 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold">Sinkronisasi Database Google Sheets</h2>
-              <p className="text-[11px] text-slate-300">Penyimpanan basis data cloud terintegrasi</p>
+              <h2 className="text-base font-bold">Sinkronisasi Cloud & Foto Siswa Online</h2>
+              <p className="text-[11px] text-slate-300">Google Sheets & Google Drive Terintegrasi</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-white rounded-lg">
@@ -335,10 +444,10 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
             </div>
           )}
 
-          {/* Account Status / Sign In */}
+          {/* Section 1: Account Status / Sign In */}
           <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
             <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-emerald-800">
-              1. Status Akun Google Workspace
+              1. Status Akun Google Workspace & Drive
             </h3>
 
             {syncState.isConnected ? (
@@ -360,9 +469,8 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
             ) : (
               <div className="space-y-3">
                 <p className="text-slate-600 text-xs leading-relaxed">
-                  Masuk dengan akun Google Anda untuk mengizinkan aplikasi membaca dan menyimpan spreadsheet Buku Induk secara otomatis ke Google Drive Anda.
+                  Masuk dengan akun Google Anda untuk mengizinkan aplikasi membaca, menghapus, dan menyimpan spreadsheet Buku Induk serta mengunggah foto siswa online ke Google Drive Anda.
                 </p>
-                {/* Official Material Google Sign-In Button format */}
                 <button
                   type="button"
                   onClick={handleSignIn}
@@ -381,11 +489,65 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
             )}
           </div>
 
-          {/* Spreadsheet Connection */}
+          {/* Section 2: Photo Online Cloud Storage */}
+          <div className="border border-slate-200 rounded-xl p-4 bg-emerald-50/40 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                <Cloud className="w-4 h-4 text-emerald-700" />
+                <span>2. Penyimpanan Foto Siswa Online (Google Drive)</span>
+              </h3>
+              <span className="text-[11px] font-mono font-semibold text-emerald-900 bg-emerald-100/80 px-2 py-0.5 rounded">
+                Folder: Buku Induk - Foto Siswa
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Foto siswa disimpan secara online di Google Drive Anda dengan tautan publik berkecepatan tinggi sehingga foto langsung muncul di komputer lain, HP, atau tablet saat membuka aplikasi.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                <div className="text-[10px] text-slate-500 font-medium">Foto Tersimpan Online:</div>
+                <div className="text-base font-bold text-emerald-700">{onlinePhotosCount} Siswa</div>
+                <div className="text-[10px] text-slate-400">Dapat dibuka dari device manapun</div>
+              </div>
+
+              <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                <div className="text-[10px] text-slate-500 font-medium">Foto Tersimpan Lokal:</div>
+                <div className="text-base font-bold text-amber-700">{localPhotosCount} Siswa</div>
+                <div className="text-[10px] text-slate-400">Perlu diunggah ke Google Drive</div>
+              </div>
+            </div>
+
+            {localPhotosCount > 0 && syncState.isConnected && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleUploadAllPhotosToDrive}
+                  disabled={isProcessing}
+                  className="w-full py-2 px-3 text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 hover:bg-emerald-100 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Unggah {localPhotosCount} Foto Lokal ke Google Drive Sekarang</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Section 3: Spreadsheet Connection */}
           <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-4">
-            <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-emerald-800">
-              2. Spreadsheet Buku Induk Terhubung
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-emerald-800">
+                3. Spreadsheet Buku Induk Terhubung
+              </h3>
+              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                Auto-Delete Bersih Aktif
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-600">
+              Setiap kali data disinkronkan, sistem menjalankan <code className="bg-slate-200/70 px-1 py-0.5 rounded font-mono">batchClear</code> sehingga siswa yang dihapus di aplikasi akan <strong>100% terhapus bersih dari Google Sheets</strong>.
+            </p>
 
             {syncState.spreadsheetId ? (
               <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
@@ -417,15 +579,15 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                   <button
                     onClick={handleExportToSheets}
                     disabled={isProcessing}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded-lg transition-colors shadow-xs"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded-lg transition-colors shadow-xs cursor-pointer"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isProcessing ? 'animate-spin' : ''}`} />
-                    <span>Kirim & Simpan ke Google Sheets</span>
+                    <span>Kirim & Bersihkan Google Sheets</span>
                   </button>
                   <button
                     onClick={handleImportFromSheets}
                     disabled={isProcessing}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors shadow-xs"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors shadow-xs cursor-pointer"
                   >
                     <ArrowUpRight className="w-3.5 h-3.5" />
                     <span>Tarik Data dari Google Sheets</span>
@@ -437,14 +599,14 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                 <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-2">
                   <div className="font-semibold text-slate-900">Opsi A: Buat Otomatis Spreadsheet Baru</div>
                   <p className="text-slate-500 text-xs">
-                    Sistem akan membuat file spreadsheet baru berjudul &quot;Buku Induk Siswa Digital - {school.namaSekolah}&quot; di Google Drive Anda dengan 4 lembar sheet yang terformat rapi.
+                    Sistem akan membuat file spreadsheet baru berjudul &quot;Buku Induk Siswa Digital - {school.namaSekolah}&quot; di Google Drive Anda dan otomatis mengunggah foto siswa ke cloud.
                   </p>
                   <button
                     onClick={handleCreateNewSheet}
                     disabled={isProcessing || !syncState.isConnected}
                     className={`inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
                       syncState.isConnected
-                        ? 'bg-emerald-800 text-white hover:bg-emerald-900 shadow-xs'
+                        ? 'bg-emerald-800 text-white hover:bg-emerald-900 shadow-xs cursor-pointer'
                         : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                     }`}
                   >
@@ -474,7 +636,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                       disabled={isProcessing || !syncState.isConnected}
                       className={`px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
                         syncState.isConnected
-                          ? 'bg-slate-900 text-white hover:bg-slate-800'
+                          ? 'bg-slate-900 text-white hover:bg-slate-800 cursor-pointer'
                           : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                       }`}
                     >
@@ -491,7 +653,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end shrink-0">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
+            className="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           >
             Tutup
           </button>

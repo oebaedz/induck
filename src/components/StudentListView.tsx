@@ -182,7 +182,7 @@ export const StudentListView: React.FC<StudentListViewProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {filteredStudents.map((student, idx) => (
                   <tr 
-                    key={student.id} 
+                    key={`${student.id}-${idx}`} 
                     className="hover:bg-slate-50/80 transition-colors group"
                   >
                     <td className="py-3 px-4 font-mono text-slate-400 tabular-nums">

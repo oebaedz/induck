@@ -160,9 +160,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="divide-y divide-slate-100">
-            {students.slice(0, 5).map((student) => (
+            {students.slice(0, 5).map((student, idx) => (
               <div 
-                key={student.id} 
+                key={`${student.id}-${idx}`} 
                 className="py-3.5 flex items-center justify-between gap-4 hover:bg-slate-50/70 -mx-2 px-2 rounded-lg transition-colors"
               >
                 <div className="flex items-center gap-3.5 min-w-0">
