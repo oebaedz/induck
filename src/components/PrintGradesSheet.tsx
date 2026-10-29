@@ -54,6 +54,14 @@ export const PrintGradesSheet: React.FC<PrintGradesSheetProps> = ({
     year: 'numeric',
   }).format(new Date());
 
+  const raporDateFormatted = school.tanggalRapor
+    ? new Intl.DateTimeFormat('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(new Date(school.tanggalRapor))
+    : todayFormatted;
+
   const matchingKarakter = perkembangan?.karakter.find(
     k => k.semester === nilaiSemester.semester
   );
@@ -399,7 +407,7 @@ export const PrintGradesSheet: React.FC<PrintGradesSheetProps> = ({
             </div>
 
             <div>
-              <div>{school.kabupatenKota}, {todayFormatted}</div>
+              <div>{school.kabupatenKota}, {raporDateFormatted}</div>
               <div className="font-medium text-slate-800">Wali Kelas,</div>
               <div className="h-24 flex items-end justify-center">
                 <div className="border-b border-slate-800 w-36 pb-1 font-bold">

@@ -1,4 +1,4 @@
-import { SchoolProfile, Student, PerkembanganSiswa, NilaiSemester, SelesaiStudiMutasi } from '../types';
+import { SchoolProfile, Student, PerkembanganSiswa, NilaiSemester, SelesaiStudiMutasi, TeacherUser } from '../types';
 
 export const INITIAL_SCHOOL_PROFILE: SchoolProfile = {
   namaSekolah: 'SMA NEGERI 1 BINA NUSANTARA',
@@ -16,8 +16,76 @@ export const INITIAL_SCHOOL_PROFILE: SchoolProfile = {
   website: 'https://sman1binanusantara.sch.id',
   namaKepalaSekolah: 'Drs. H. Bambang Sudarsono, M.Pd.',
   nipKepalaSekolah: '19680514 199303 1 004',
+  tanggalRapor: '2024-06-21',
   logoUrl: '/src/assets/images/school_crest_emblem_1792639264888.jpg',
 };
+
+export const INITIAL_TEACHERS: TeacherUser[] = [
+  {
+    id: 'tch-001',
+    username: 'admin',
+    fullName: 'Drs. H. Bambang Sudarsono',
+    gelar: 'M.Pd.',
+    nip: '19680514 199303 1 004',
+    role: 'admin',
+    pin: '123456',
+    isActive: true,
+    canEditBiodata: true,
+    canEditGrades: true,
+    canDeleteStudent: true,
+    canSyncSheets: true,
+    createdAt: '2024-01-01',
+  },
+  {
+    id: 'tch-002',
+    username: 'wali_x_a',
+    fullName: 'Dra. Hj. Nurhayati',
+    gelar: 'M.Pd.',
+    nip: '19750812 200003 2 001',
+    role: 'wali_kelas',
+    pin: '123456',
+    assignedClass: 'X-A',
+    mataPelajaran: 'Bahasa Indonesia',
+    isActive: true,
+    canEditBiodata: true,
+    canEditGrades: true,
+    canDeleteStudent: false,
+    canSyncSheets: true,
+    createdAt: '2024-01-01',
+  },
+  {
+    id: 'tch-003',
+    username: 'guru_mtk',
+    fullName: 'Bambang Suryono',
+    gelar: 'S.Pd.',
+    nip: '19820315 200801 1 012',
+    role: 'guru_mapel',
+    pin: '123456',
+    mataPelajaran: 'Matematika (Umum)',
+    isActive: true,
+    canEditBiodata: false,
+    canEditGrades: true,
+    canDeleteStudent: false,
+    canSyncSheets: true,
+    createdAt: '2024-01-01',
+  },
+  {
+    id: 'tch-004',
+    username: 'staf_tu',
+    fullName: 'Siti Aminah',
+    gelar: 'A.Md.',
+    nip: '19880420 201101 2 015',
+    role: 'tata_usaha',
+    pin: '123456',
+    isActive: true,
+    canEditBiodata: true,
+    canEditGrades: false,
+    canDeleteStudent: false,
+    canSyncSheets: true,
+    createdAt: '2024-01-01',
+  },
+];
+
 
 export const INITIAL_STUDENTS: Student[] = [
   {

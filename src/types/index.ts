@@ -179,15 +179,42 @@ export interface SchoolProfile {
   website: string;
   namaKepalaSekolah: string;
   nipKepalaSekolah: string;
+  tanggalRapor?: string;
   logoUrl?: string;
+}
+
+export type UserRole = 'admin' | 'wali_kelas' | 'guru_mapel' | 'tata_usaha';
+
+export interface TeacherUser {
+  id: string;
+  username: string;
+  fullName: string;
+  gelar?: string;
+  nip: string;
+  role: UserRole;
+  pin: string; // 4-6 digit numeric PIN
+  mataPelajaran?: string; // e.g. "Matematika", "Bahasa Indonesia", dll
+  assignedClass?: string;  // e.g. "X-A", "XI-IPA-1", dll
+  isActive: boolean;
+  canEditBiodata: boolean;
+  canEditGrades: boolean;
+  canDeleteStudent: boolean;
+  canSyncSheets: boolean;
+  createdAt: string;
+  lastLogin?: string;
 }
 
 export interface SyncState {
   isConnected: boolean;
+  syncMethod: 'webhook' | 'oauth';
   spreadsheetId: string | null;
   spreadsheetUrl: string | null;
   spreadsheetTitle: string | null;
   lastSyncedAt: string | null;
   isSyncing: boolean;
   userEmail: string | null;
+  webhookUrl: string | null;
+  webhookConnected: boolean;
+  webhookLastSync: string | null;
 }
+

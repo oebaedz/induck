@@ -94,13 +94,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="w-4 h-4 text-emerald-700 shrink-0" />
             <span>Basis Data:</span>
-            {syncState.isConnected ? (
+            {syncState.webhookConnected ? (
+              <span className="font-medium text-emerald-800">
+                Terhubung Cloud Apps Script (Multi-Perangkat & Google Drive Aktif)
+              </span>
+            ) : syncState.isConnected ? (
               <span className="font-medium text-emerald-800">
                 Terhubung dengan Google Sheets ({syncState.spreadsheetTitle || 'Buku Induk Spreadsheet'})
               </span>
             ) : (
               <span className="font-medium text-slate-600">
-                Penyimpanan Lokal Aktif (Dapat disinkronkan ke Google Sheets kapan saja)
+                Penyimpanan Lokal Aktif (Dapat disinkronkan ke Cloud kapan saja)
               </span>
             )}
           </div>

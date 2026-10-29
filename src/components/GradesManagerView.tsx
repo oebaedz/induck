@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Student, NilaiSemester, MataPelajaranNilai } from '../types';
+import { Student, NilaiSemester, MataPelajaranNilai, TeacherUser } from '../types';
 import { STANDARD_MAPEL_LIST } from '../data/initialData';
-import { Save, Printer, Plus, Trash2, Check, Award } from 'lucide-react';
+import { Save, Printer, Plus, Trash2, Check, Award, Lock } from 'lucide-react';
 
 interface GradesManagerViewProps {
   students: Student[];
   nilaiList: NilaiSemester[];
+  currentUser?: TeacherUser;
   selectedStudentId?: string;
   initialSemester?: number;
   onSaveNilai: (nilai: NilaiSemester) => void;
@@ -15,6 +16,7 @@ interface GradesManagerViewProps {
 export const GradesManagerView: React.FC<GradesManagerViewProps> = ({
   students,
   nilaiList,
+  currentUser,
   selectedStudentId,
   initialSemester = 1,
   onSaveNilai,
@@ -182,13 +184,20 @@ export const GradesManagerView: React.FC<GradesManagerViewProps> = ({
             <Printer className="w-4 h-4" />
             <span>Cetak Rapor Semester Ini</span>
           </button>
-          <button
-            onClick={handleSave}
-            className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-emerald-800 rounded-lg hover:bg-emerald-900 transition-colors shadow-xs"
-          >
-            {isSavedFeedback ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            <span>{isSavedFeedback ? 'Tersimpan!' : 'Simpan Nilai'}</span>
-          </button>
+          {(!currentUser || currentUser.canEditGrades) ? (
+            <button
+              onClick={handleSave}
+              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-emerald-800 rounded-lg hover:bg-emerald-900 transition-colors shadow-xs"
+            >
+              {isSavedFeedback ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+              <span>{isSavedFeedback ? 'Tersimpan!' : 'Simpan Nilai'}</span>
+            </button>
+          ) : (
+            <div className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg text-xs font-medium">
+              <Lock className="w-3.5 h-3.5" />
+              <span>Hanya Lihat (Mode Baca)</span>
+            </div>
+          )}
         </div>
       </div>
 

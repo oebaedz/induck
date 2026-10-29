@@ -11,6 +11,7 @@ import {
   SelesaiStudiMutasi,
   SchoolProfile,
   SyncState,
+  TeacherUser,
 } from './types';
 import {
   INITIAL_SCHOOL_PROFILE,
@@ -18,6 +19,7 @@ import {
   INITIAL_PERKEMBANGAN,
   INITIAL_NILAI,
   INITIAL_SELESAI_STUDI,
+  INITIAL_TEACHERS,
 } from './data/initialData';
 import { initAuth } from './services/googleAuth';
 import { Navbar, ActiveTab } from './components/Navbar';
@@ -33,6 +35,8 @@ import { GoogleSheetsModal } from './components/GoogleSheetsModal';
 import { SchoolSettingsModal } from './components/SchoolSettingsModal';
 import { ConfirmationModal } from './components/ConfirmationModal';
 import { StudentUploadModal } from './components/StudentUploadModal';
+import { TeachersManagementModal } from './components/TeachersManagementModal';
+import { UserLoginModal } from './components/UserLoginModal';
 
 function deduplicateStudents(studentList: Student[]): Student[] {
   const seenIds = new Set<string>();
@@ -84,17 +88,42 @@ export default function App() {
     return saved ? JSON.parse(saved) : INITIAL_SELESAI_STUDI;
   });
 
+  // Guru & Staf (Terintegrasi Akun Login & RBAC)
+  const [teachers, setTeachers] = useState<TeacherUser[]>(() => {
+    const saved = localStorage.getItem('buku_induk_teachers');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_TEACHERS;
+  });
+
+  const [currentUserId, setCurrentUserId] = useState<string>(() => {
+    return localStorage.getItem('buku_induk_current_user_id') || 'tch-001';
+  });
+
+  const currentUser = teachers.find(t => t.id === currentUserId) || teachers[0] || INITIAL_TEACHERS[0];
+
   // Google Sheets state
   const [syncState, setSyncState] = useState<SyncState>(() => {
     const saved = localStorage.getItem('buku_induk_sync');
+    const savedWebhook = localStorage.getItem('appscript_webhook_url');
     return saved ? JSON.parse(saved) : {
       isConnected: false,
+      syncMethod: 'webhook',
       spreadsheetId: null,
       spreadsheetUrl: null,
       spreadsheetTitle: null,
       lastSyncedAt: null,
       isSyncing: false,
       userEmail: null,
+      webhookUrl: savedWebhook || null,
+      webhookConnected: Boolean(savedWebhook),
+      webhookLastSync: null,
     };
   });
 
@@ -106,6 +135,8 @@ export default function App() {
   // Modals
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
   const [isSchoolModalOpen, setIsSchoolModalOpen] = useState(false);
+  const [isTeachersModalOpen, setIsTeachersModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isStudentFormOpen, setIsStudentFormOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
@@ -151,6 +182,35 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('buku_induk_sync', JSON.stringify(syncState));
   }, [syncState]);
+
+  useEffect(() => {
+    localStorage.setItem('buku_induk_teachers', JSON.stringify(teachers));
+  }, [teachers]);
+
+  useEffect(() => {
+    localStorage.setItem('buku_induk_current_user_id', currentUserId);
+  }, [currentUserId]);
+
+  // Handlers for Teachers & RBAC
+  const handleSaveTeacher = (teacherData: TeacherUser) => {
+    setTeachers(prev => {
+      const idx = prev.findIndex(t => t.id === teacherData.id);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = teacherData;
+        return updated;
+      }
+      return [...prev, teacherData];
+    });
+  };
+
+  const handleDeleteTeacher = (id: string) => {
+    setTeachers(prev => prev.filter(t => t.id !== id));
+  };
+
+  const handleSwitchUser = (teacher: TeacherUser) => {
+    setCurrentUserId(teacher.id);
+  };
 
   // Google OAuth state listener
   useEffect(() => {
@@ -457,8 +517,11 @@ export default function App() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         syncState={syncState}
+        currentUser={currentUser}
         onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
         onOpenSchoolModal={() => setIsSchoolModalOpen(true)}
+        onOpenTeachersModal={() => setIsTeachersModalOpen(true)}
+        onOpenLoginModal={() => setIsLoginModalOpen(true)}
       />
 
       {/* Main Content Viewport */}
@@ -481,6 +544,7 @@ export default function App() {
         {activeTab === 'students' && (
           <StudentListView
             students={students}
+            currentUser={currentUser}
             onOpenAddModal={handleOpenAddStudent}
             onOpenUploadModal={() => setIsUploadModalOpen(true)}
             onOpenEditModal={handleOpenEditStudent}
@@ -494,6 +558,7 @@ export default function App() {
           <GradesManagerView
             students={students}
             nilaiList={nilaiList}
+            currentUser={currentUser}
             selectedStudentId={gradesTarget?.studentId}
             initialSemester={gradesTarget?.semester || 1}
             onSaveNilai={handleSaveNilai}
@@ -525,15 +590,26 @@ export default function App() {
               onClick={() => setIsSheetsModalOpen(true)} 
               className="text-emerald-800 hover:underline font-semibold"
             >
-              Sinkronisasi Google Sheets
+              Sinkronisasi Cloud & Sheets
             </button>
             <span aria-hidden="true">·</span>
-            <button 
-              onClick={() => setIsSchoolModalOpen(true)} 
-              className="text-slate-600 hover:underline"
-            >
-              Ubah Identitas Sekolah
-            </button>
+            {currentUser.role === 'admin' && (
+              <>
+                <button 
+                  onClick={() => setIsTeachersModalOpen(true)} 
+                  className="text-indigo-700 hover:underline font-semibold"
+                >
+                  Kelola Guru & Staf
+                </button>
+                <span aria-hidden="true">·</span>
+                <button 
+                  onClick={() => setIsSchoolModalOpen(true)} 
+                  className="text-slate-600 hover:underline"
+                >
+                  Ubah Identitas Sekolah
+                </button>
+              </>
+            )}
           </div>
         </div>
       </footer>
@@ -566,6 +642,7 @@ export default function App() {
         isOpen={isSheetsModalOpen}
         syncState={syncState}
         school={school}
+        teachers={teachers}
         students={students}
         perkembangan={perkembangan}
         nilaiList={nilaiList}
@@ -577,6 +654,8 @@ export default function App() {
           if (imported.perkembangan?.length) setPerkembangan(imported.perkembangan);
           if (imported.nilaiList?.length) setNilaiList(imported.nilaiList);
           if (imported.kelulusanMutasi?.length) setKelulusanMutasi(imported.kelulusanMutasi);
+          if (imported.school) setSchool(imported.school);
+          if (imported.teachers?.length) setTeachers(imported.teachers);
         }}
         onRequestConfirm={({ title, message, onConfirm }) => {
           setConfirmConfig({
@@ -596,6 +675,34 @@ export default function App() {
         school={school}
         onClose={() => setIsSchoolModalOpen(false)}
         onSave={setSchool}
+      />
+
+      <TeachersManagementModal
+        isOpen={isTeachersModalOpen}
+        currentUser={currentUser}
+        teachers={teachers}
+        onClose={() => setIsTeachersModalOpen(false)}
+        onSaveTeacher={handleSaveTeacher}
+        onDeleteTeacher={handleDeleteTeacher}
+        onRequestConfirm={({ title, message, onConfirm }) => {
+          setConfirmConfig({
+            isOpen: true,
+            title,
+            message,
+            onConfirm: () => {
+              onConfirm();
+              setConfirmConfig(c => ({ ...c, isOpen: false }));
+            },
+          });
+        }}
+      />
+
+      <UserLoginModal
+        isOpen={isLoginModalOpen}
+        currentUser={currentUser}
+        teachers={teachers}
+        onClose={() => setIsLoginModalOpen(false)}
+        onSwitchUser={handleSwitchUser}
       />
 
       <ConfirmationModal

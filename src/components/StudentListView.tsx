@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { Student } from '../types';
+import { Student, TeacherUser } from '../types';
 import { Search, Plus, Printer, Edit2, Trash2, Eye, UserX, Upload } from 'lucide-react';
 
 interface StudentListViewProps {
   students: Student[];
+  currentUser?: TeacherUser;
   onOpenAddModal: () => void;
   onOpenUploadModal: () => void;
   onOpenEditModal: (student: Student) => void;
@@ -14,6 +15,7 @@ interface StudentListViewProps {
 
 export const StudentListView: React.FC<StudentListViewProps> = ({
   students,
+  currentUser,
   onOpenAddModal,
   onOpenUploadModal,
   onOpenEditModal,
@@ -21,6 +23,7 @@ export const StudentListView: React.FC<StudentListViewProps> = ({
   onOpenPrintMasterBook,
   onDeleteStudent,
 }) => {
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('Semua');
   const [kelasFilter, setKelasFilter] = useState<string>('Semua');
@@ -66,20 +69,24 @@ export const StudentListView: React.FC<StudentListViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <button
-            onClick={onOpenUploadModal}
-            className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 rounded-lg hover:bg-emerald-50 transition-colors shadow-xs"
-          >
-            <Upload className="w-4 h-4" />
-            <span>Unggah Siswa (CSV / TSV)</span>
-          </button>
-          <button
-            onClick={onOpenAddModal}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-emerald-800 rounded-lg hover:bg-emerald-900 transition-colors shadow-xs"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Tambah Siswa Baru</span>
-          </button>
+          {(!currentUser || currentUser.canEditBiodata) && (
+            <>
+              <button
+                onClick={onOpenUploadModal}
+                className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 rounded-lg hover:bg-emerald-50 transition-colors shadow-xs"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Unggah Siswa (CSV / TSV)</span>
+              </button>
+              <button
+                onClick={onOpenAddModal}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-emerald-800 rounded-lg hover:bg-emerald-900 transition-colors shadow-xs"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tambah Siswa Baru</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -266,20 +273,24 @@ export const StudentListView: React.FC<StudentListViewProps> = ({
                         >
                           <Printer className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => onOpenEditModal(student)}
-                          className="p-1.5 text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
-                          title="Ubah Data Siswa"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => onDeleteStudent(student)}
-                          className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
-                          title="Hapus Dari Buku Induk"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {(!currentUser || currentUser.canEditBiodata) && (
+                          <button
+                            onClick={() => onOpenEditModal(student)}
+                            className="p-1.5 text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
+                            title="Ubah Data Siswa"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {(!currentUser || currentUser.canDeleteStudent) && (
+                          <button
+                            onClick={() => onDeleteStudent(student)}
+                            className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+                            title="Hapus Dari Buku Induk"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
